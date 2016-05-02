@@ -1425,7 +1425,7 @@ Some nodes can be specified with keywords:  root, all, all_leaves"""
     """ returns the number of synonymous changes between the sequence at the self node and the sequence at the "node" argument """
     counted_changes= self.count_changes_with( node, positions=positions ) 
     return counted_changes[1]
-  def CountA_with(self, node):
+  def CountA_with(self, node, positions=None):
     """ returns the number of synonymous changes between the sequence at the self node and the sequence at the "node" argument """
     counted_changes= self.count_changes_with( node, positions=positions ) 
     return counted_changes[0]
