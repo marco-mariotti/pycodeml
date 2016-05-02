@@ -721,7 +721,9 @@ Some nodes can be specified with keywords:  root, all, all_leaves"""
     for codon_i in range(self.length()/3):
       for t in self.titles():
         codon= self.seq_of(t)[codon_i*3:codon_i*3+3]
-        if '-' in codon and codon!='---': raise Exception, "ERROR this is not a codon alignment: all gaps must occur in multiple of 3!"
+        if '-' in codon and codon!='---': 
+          printerr( (t, codon, codon_i), 1   )
+          raise Exception, "ERROR this is not a codon alignment: all gaps must occur in multiple of 3!"
 
   def alignment_without_stops(self):
     """ Returns a copy of self.ali with stop codons removed (if any: otherwise, just returns self.ali)"""
@@ -1419,13 +1421,13 @@ Some nodes can be specified with keywords:  root, all, all_leaves"""
       return count_changes(  seq1, seq2,  silent=silent, split_nonsense=split_nonsense )        ## some position limits specified; not saving in this case
 
  
-  def CountS_with(self, node):
+  def CountS_with(self, node, positions=None):
     """ returns the number of synonymous changes between the sequence at the self node and the sequence at the "node" argument """
-    counted_changes= self.count_changes_with( node ) 
+    counted_changes= self.count_changes_with( node, positions=positions ) 
     return counted_changes[1]
   def CountA_with(self, node):
     """ returns the number of synonymous changes between the sequence at the self node and the sequence at the "node" argument """
-    counted_changes= self.count_changes_with( node ) 
+    counted_changes= self.count_changes_with( node, positions=positions ) 
     return counted_changes[0]
 
    #### Methods to compare a node with another
@@ -1488,110 +1490,143 @@ Some nodes can be specified with keywords:  root, all, all_leaves"""
       return self.parent.get_derived_data(self.KaKs_with , title  )
 
   #### Methods to compare a node with its parent, that is to say, compute a sortof first derivative indexes
-  def dKs(self):
+  def dKs(self, positions=None):
     """ compute Ks with the first ancestor of this node. equivalent to     self.Ks_with(self.up)    """
     if not self.up: raise Exception, "ERROR can't compute dKs for the root node!"
-    return self.Ks_with(self.up)
+    return self.Ks_with(self.up, positions=positions)
 
-  def dKa(self):
+  def dKa(self, positions=None):
     """ compute Ka with the first ancestor of this node. equivalent to     self.Ka_with(self.up)    """
     if not self.up: raise Exception, "ERROR can't compute dKa for the root node!"
     return self.Ka_with(self.up)
 
-  def dKaKs(self):
+  def dKaKs(self, positions=None):
     """ compute KaPS with the first ancestor of this node. equivalent to     self.Ks_with(self.up)    """
     if not self.up: raise Exception, "ERROR can't compute dKaKs for the root node!"
-    return self.KaKs_with(self.up)
+    return self.KaKs_with(self.up, positions=positions)
     
-  def dCountS(self):
+  def dCountS(self, positions=None):
     """ returns the number of synonymous changes with the first ancestor of this node. """
     if not self.up: raise Exception, "ERROR can't compute dCountS for the root node!"    
-    counted= self.count_changes_with( self.up ) #     nonSyn, Syn, 
+    counted= self.count_changes_with( self.up, positions=positions ) #     nonSyn, Syn, 
     return counted[1] 
 
-  def dCountA(self):
+  def dCountA(self, positions=None):
     """ returns the number of synonymous changes with the first ancestor of this node. """
     if not self.up: raise Exception, "ERROR can't compute dCountA for the root node!"    
-    counted= self.count_changes_with( self.up ) #     nonSyn, Syn, 
+    counted= self.count_changes_with( self.up, positions=positions ) #     nonSyn, Syn, 
     return counted[0] 
   dCountN=dCountA
 
   ### methods to compare this node with all its leafs
-  def Ks_lineage(self, non_leaves=False):
+  def Ks_lineage(self, non_leaves=False, positions=None):
     """ compute Ks comparing the sequence in self with all its leaves, counting each change only once.  non_leaves are also considered if non_leaves==True"""
     if self.is_leaf(): raise Exception, "ERROR can't compute Ks_lineage for leaf node!"
-    title=self.get_name()+':NL='+str(int(non_leaves))
-    if non_leaves: title+=':AS='+self.parent.ancestral_sequences_source
-    if not self.parent.has_derived_data(self.Ks_lineage , title  ):
-      counted_sites = self.count_sites()    
-      other_cds=[ n.sequence() for n in self.traverse() if n.is_leaf() or non_leaves ]    
-      counted_uniq_changes=count_unique_changes( self.sequence(), other_cds, split_nonsense=True )
-      data= float( counted_uniq_changes[1] )/counted_sites[1]
-      self.parent.save_derived_data( self.Ks_lineage , title, data)
-    return self.parent.get_derived_data(self.Ks_lineage , title)
+    if positions is None:   
+      title=self.get_name()+':NL='+str(int(non_leaves))
+      if non_leaves: title+=':AS='+self.parent.ancestral_sequences_source
+      if not self.parent.has_derived_data(self.Ks_lineage , title  ):
+        counted_sites = self.count_sites()    
+        other_cds=[ n.sequence() for n in self.traverse() if n.is_leaf() or non_leaves ]    
+        counted_uniq_changes=count_unique_changes( self.sequence(), other_cds, split_nonsense=True )
+        data= float( counted_uniq_changes[1] )/counted_sites[1]
+        self.parent.save_derived_data( self.Ks_lineage , title, data)
+      return self.parent.get_derived_data(self.Ks_lineage , title)
+    else: 
+      counted_sites = self.count_sites(positions=positions)    
+      other_cds=[ n.subseq(positions=positions) for n in self.traverse() if n.is_leaf() or non_leaves ]    
+      counted_uniq_changes=count_unique_changes( self.subseq(positions=positions), other_cds, split_nonsense=True )
+      return float( counted_uniq_changes[1] )/counted_sites[1]
 
-  def Ka_lineage(self, non_leaves=False):
+  def Ka_lineage(self, non_leaves=False, positions=None):
     """ compute Ka comparing the sequence in self with all its leaves, counting each change only once.  non_leaves are also considered if non_leaves==True"""
     if self.is_leaf(): raise Exception, "ERROR can't compute Ka_lineage for leaf node!"
-    title=self.get_name()+':NL='+str(int(non_leaves))
-    if non_leaves: title+=':AS='+self.parent.ancestral_sequences_source
-    if not self.parent.has_derived_data(self.Ka_lineage , title  ):
-      counted_sites = self.count_sites()    
-      other_cds=[ n.sequence() for n in self.traverse() if n.is_leaf() or non_leaves ]    
-      counted_uniq_changes=count_unique_changes( self.sequence(), other_cds, split_nonsense=True )
-      data= float( counted_uniq_changes[0]+counted_uniq_changes[2] )/(counted_sites[0]+counted_sites[2])
-      self.parent.save_derived_data( self.Ka_lineage , title,   data   )
-    return self.parent.get_derived_data(self.Ka_lineage , title)
+    if positions is None:   
+      title=self.get_name()+':NL='+str(int(non_leaves))
+      if non_leaves: title+=':AS='+self.parent.ancestral_sequences_source
+      if not self.parent.has_derived_data(self.Ka_lineage , title  ):
+        counted_sites = self.count_sites()    
+        other_cds=[ n.sequence() for n in self.traverse() if n.is_leaf() or non_leaves ]    
+        counted_uniq_changes=count_unique_changes( self.sequence(), other_cds, split_nonsense=True )
+        data= float( counted_uniq_changes[0]+counted_uniq_changes[2] )/(counted_sites[0]+counted_sites[2])
+        self.parent.save_derived_data( self.Ka_lineage , title,   data   )
+      return self.parent.get_derived_data(self.Ka_lineage , title)
+    else: 
+      counted_sites = self.count_sites(positions=positions)    
+      other_cds=[ n.subseq(positions=positions) for n in self.traverse() if n.is_leaf() or non_leaves ]    
+      counted_uniq_changes=count_unique_changes( self.subseq(positions=positions), other_cds, split_nonsense=True )
+      return float( counted_uniq_changes[0]+counted_uniq_changes[2] )/(counted_sites[0]+counted_sites[2])
 
-  def KaKs_lineage(self, non_leaves=False):
+  def KaKs_lineage(self, non_leaves=False, positions=None):
     """ compute KaKs comparing the sequence in self with all its leaves, counting each change only once.  non_leaves are also considered if non_leaves==True
         Returns 999.0 if infinite (Ks=0)    """
     if self.is_leaf(): raise Exception, "ERROR can't compute KaKs_lineage for leaf node!"
-    title=self.get_name()+':NL='+str(int(non_leaves))
-    if non_leaves: title+=':AS='+self.parent.ancestral_sequences_source
-    if not self.parent.has_derived_data(self.KaKs_lineage , title):
-      counted_sites = self.count_sites()    
-      other_cds=[ n.sequence() for n in self.traverse() if n.is_leaf() or non_leaves ]    
-      counted_uniq_changes=count_unique_changes( self.sequence(), other_cds, split_nonsense=True )
+    if positions is None:
+      title=self.get_name()+':NL='+str(int(non_leaves))
+      if non_leaves: title+=':AS='+self.parent.ancestral_sequences_source
+      if not self.parent.has_derived_data(self.KaKs_lineage , title):
+        counted_sites = self.count_sites()    
+        other_cds=[ n.sequence() for n in self.traverse() if n.is_leaf() or non_leaves ]    
+        counted_uniq_changes=count_unique_changes( self.sequence(), other_cds, split_nonsense=True )
+        Ka= float( counted_uniq_changes[0]+counted_uniq_changes[2] )/(counted_sites[0]+counted_sites[2])
+        Ks= float( counted_uniq_changes[1] )/counted_sites[1]
+        if Ka==0.0: data=0.0  ## --> useful only if Ks is 0.0 as well
+        elif Ks==0.0: data=999.0
+        else: data= Ka/Ks    
+        self.parent.save_derived_data( self.KaKs_lineage , title, data)
+      return self.parent.get_derived_data(self.KaKs_lineage , title)
+    else: 
+      counted_sites = self.count_sites(positions=positions)    
+      other_cds=[ n.subseq(positions=positions) for n in self.traverse() if n.is_leaf() or non_leaves ]    
+      counted_uniq_changes=count_unique_changes( self.subseq(positions=positions), other_cds, split_nonsense=True )
       Ka= float( counted_uniq_changes[0]+counted_uniq_changes[2] )/(counted_sites[0]+counted_sites[2])
       Ks= float( counted_uniq_changes[1] )/counted_sites[1]
       if Ka==0.0: data=0.0  ## --> useful only if Ks is 0.0 as well
       elif Ks==0.0: data=999.0
       else: data= Ka/Ks    
-      self.parent.save_derived_data( self.KaKs_lineage , title, data)
-    return self.parent.get_derived_data(self.KaKs_lineage , title)
+      return data
 
-  def sum_dKs(self):
+  def sum_dKs(self, positions=None):
     """ compute the sum of all dKs of children until leaves of this non-leaf node"""
     if self.is_leaf(): raise Exception, "ERROR can't compute sum_dKs for leaf node!"
-    title=self.get_name()+':AS='+self.parent.ancestral_sequences_source
-    if not self.parent.has_derived_data(self.sum_dKs , title):    
-      data=sum( [node.dKs()    for node in self.traverse() if node != self ] )
-      self.parent.save_derived_data( self.sum_dKs , title, data)      
-    return self.parent.get_derived_data(self.sum_dKs , title)      
+    if positions is None:
+      title=self.get_name()+':AS='+self.parent.ancestral_sequences_source
+      if not self.parent.has_derived_data(self.sum_dKs , title):    
+        data=sum( [node.dKs()    for node in self.traverse() if node != self ] )
+        self.parent.save_derived_data( self.sum_dKs , title, data)      
+      return self.parent.get_derived_data(self.sum_dKs , title)      
+    else:
+      return sum( [node.dKs(positions=positions)    for node in self.traverse() if node != self ] )
 
-  def sum_dKa(self):
+  def sum_dKa(self, positions=None):
     """ compute the sum of all dKa of children until leaves of this non-leaf node"""
     if self.is_leaf(): raise Exception, "ERROR can't compute sum_dKa for leaf node!"
-    title=self.get_name()+':AS='+self.parent.ancestral_sequences_source
-    if not self.parent.has_derived_data(self.sum_dKa , title):    
-      data=sum( [node.dKa()    for node in self.traverse() if node != self ] )
-      self.parent.save_derived_data( self.sum_dKa , title, data)      
-    return self.parent.get_derived_data(self.sum_dKa, title)      
+    if positions is None:
+      title=self.get_name()+':AS='+self.parent.ancestral_sequences_source
+      if not self.parent.has_derived_data(self.sum_dKa , title):    
+        data=sum( [node.dKa()    for node in self.traverse() if node != self ] )
+        self.parent.save_derived_data( self.sum_dKa , title, data)      
+      return self.parent.get_derived_data(self.sum_dKa, title)      
+    else:
+      return sum( [node.dKa(positions=positions)    for node in self.traverse() if node != self ] )
 
-  def count_unique_changes(self, non_leaves=False):
+  def count_unique_changes(self, non_leaves=False, positions=None):
     """ compute the uniq changes of this sequence comparing with the leaves below this node
     returns: [ nonSyn, Syn, NonSense,  CpG_nonSyn, CpG_syn, CpG_nonsense ]
     see MMlib.count_unique_changes
     """
     if self.is_leaf(): raise Exception, "ERROR can't compute uniq_changes for leaf node... nothing to compare with!"
-    title=self.get_name()+':NL='+str(int(non_leaves))
-    if non_leaves: title+=':AS='+self.parent.ancestral_sequences_source    
-    if not self.parent.has_derived_data(self.count_unique_changes , title):
-      other_cds=[ n.sequence() for n in self.traverse() if n.is_leaf() or non_leaves ]    
-      data= count_unique_changes( self.sequence(), other_cds, split_nonsense=True  )
-      self.parent.save_derived_data( self.count_unique_changes , title, data)
-    return self.parent.get_derived_data(self.count_unique_changes , title)
+    if positions is None: 
+      title=self.get_name()+':NL='+str(int(non_leaves))
+      if non_leaves: title+=':AS='+self.parent.ancestral_sequences_source    
+      if not self.parent.has_derived_data(self.count_unique_changes , title):
+        other_cds=[ n.sequence() for n in self.traverse() if n.is_leaf() or non_leaves ]    
+        data= count_unique_changes( self.sequence(), other_cds, split_nonsense=True  )
+        self.parent.save_derived_data( self.count_unique_changes , title, data)
+      return self.parent.get_derived_data(self.count_unique_changes , title)
+    else: 
+      other_cds=[ n.subseq(positions=positions) for n in self.traverse() if n.is_leaf() or non_leaves ]    
+      data= count_unique_changes( self.subseq(positions=positions), other_cds, split_nonsense=True  )
 
   #################### decorating function: to add faces to nodes
 

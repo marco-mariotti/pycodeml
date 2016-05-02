@@ -2,7 +2,7 @@
 __author__  = "Marco Mariotti"
 __email__   = "marco.mariotti@crg.eu"
 __licence__ = "GPLv3"
-__version__ = "0.3"
+__version__ = "0.4"
 import sys
 sys.path.insert(0, "/users/rg/mmariotti/libraries/")
 sys.path.append('/users/rg/mmariotti/scripts')
@@ -19,16 +19,20 @@ Some nodes can be specified with keywords:  root, all, all_leaves
 -t   phylogenetic tree, with names matching the first words of the fasta headers
 -o   output prefix for this project. The file prefix.cdn_ali and prefix.codeml will be created, or loaded if found already present. In this last case, options -a and -t are not compulsory
 
-## analysis
+## analysis with codeml models
 -w_change  [nodes]        perform a w_change analysis on a number of nodes defined by arg (no arg->all). This analysis consists in comparing a null, fixed omega model with a w_change model with a LRT test. In the w_change model, all nodes below the tested node (including it) are assumed to have the same omega, which is different from the rest of the tree.
 -w_change2 [nodes]        same as w_change, but this tests the change in omega affecting a single node (and not its descendants, as w_change)
 -free_w                   compute omegas across all tree using a free ratio model, rich in parameters and long to execute
--KaKs | -Ks | -Ka    [nodes]  count sites and syn/nonsyn changes to compute the proportion of those fixed among the possible ones, considering all leaves below the considered nodes (no arg->all)
--dKaKs | -dKs | -dKa [nodes]  compute these indexes comparing each node with its closest ancestor
+
+## sequence analysis 
+-KaKs   | -Ks |  -Ka [nodes]  count sites and syn/nonsyn changes to compute the proportion of those fixed among the possible ones, considering all leaves below the considered nodes (no arg->all)
+-dKaKs  |-dKs | -dKa [nodes]  compute these indexes comparing each node with its closest ancestor
 -sum_dKs | -sum_dKa  [nodes]  compute the sum of the dKs or dKa of all children of this node, parsing until leaves nodes
 -dCountS | -dCountA  [nodes]  to show simply the count of changes in respect to the direct ancestor node
 -KaKs_with  | ..  [ref:nodes] compute KaKs for target nodes in respect to reference (ancestor). -Ks_with and -Ka_with are also available
 -CountS_with | .. [ref:nodes] count changes for target nodes in respect to reference. -CountA_with is also available 
+-wsize       affects all sequence analyses; compute values over a sliding window of this size (in codons)
+-wstep       define step of sliding windows, if wsize is active
 
 ## node graphics       
 the option -G is determining what graphical elements are shown in the nodes. If you don't specify any -G options, default elements are added for each analysis run.
@@ -76,12 +80,12 @@ node_name  fgcolor=#DD0000           faces:branch-right.margin_bottom=6
 -log   arg         write log to this file instead into prefix.last_log
 -print_opt         print currently active options
 -h OR --help [+]   print this help and exit. With an argument, will display a guide to graphical options for a particular analysis (e.g. w_change) 
-
 """
 
 command_line_synonyms={'free':'free_w'}
 def_opt= {'a':None, 't':None, 'o':None,
 'all':0,
+'wsize':None, 'wstep':1,
 'D':0, 'p':0, 'out':0,  'width':None, 'height':None, 'G':0, 
 'ref':'root', 'seq':0, 'aa':0,
 'no_save':0, 'sec':0, 'small':0, 'zoom':None, 'clean':0, 
@@ -441,41 +445,54 @@ def main(args={}):
 
   ############################################
   ######### analysis without codeml models
+  if opt['wsize']: 
+    windows=[]
+    codon_start=1; window_size=opt['wsize'];  window_step=opt['wstep']
+    codon_end=codon_start+window_size-1
+    while codon_end<A.length()/3:
+      windows.append( [codon_start, codon_end]  )
+      codon_start+=window_step
+      codon_end=codon_start+window_size-1
+  else: windows=[None]
 
-  ## analysis that can't be applied to root
-  for analysis_name in [ 'dCountA', 'dCountS', 'dKa', 'dKs', 'dKaKs' ]:
-    if opt[analysis_name]:
-      write('\n'+(' '+analysis_name+' (pycodeml) ').center(80, '_'), 1   )
-      targets= A.get_nodes( opt[analysis_name], no_root=True)            # no root
-      for target_node in targets:      
-        write( ljust(target_node.get_name(), 80)+' '+analysis_name+': ')
-        value= eval('target_node.'+analysis_name+'()')   
-        if analysis_name.startswith('dCount'): write(str(value), 1)
-        else:                                  write(str(round(value, 4) ), 1)
+  for window in windows:
+    if window is None:    positions=None;     window_name=''
+    else:                 positions=[window]; window_name='@{st}-{end}:'.format(st=window[0], end=window[1])
 
-  ## analysis that can't be applied to leaves
-  for analysis_name in [ 'sum_dKs', 'sum_dKa', 'Ka', 'Ks', 'KaKs' ]:
-    if opt[analysis_name]:
-      write('\n'+(' '+analysis_name+' (pycodeml) ').center(80, '_'), 1   )
-      targets= A.get_nodes( opt[analysis_name], no_leaves=True)           #no leaves
-      analysis_name_call=analysis_name
-      if not analysis_name.startswith('sum_'): analysis_name_call+='_lineage' ## note: adding "_lineage" to analysis name; KaKs is called KaKs_lineage in ete2_MM
-      for target_node in targets:      
-        write( ljust(target_node.get_name(), 80)+' '+analysis_name+' ')
-        value= eval('target_node.'+analysis_name_call+'()')   
-        write(str(round(value, 4) ), 1)
+    ## analysis that can't be applied to root
+    for analysis_name in [ 'dCountA', 'dCountS', 'dKa', 'dKs', 'dKaKs' ]:
+      if opt[analysis_name]:
+        write('\n'+(' '+analysis_name+' (pycodeml) ').center(80, '_'), 1   )
+        targets= A.get_nodes( opt[analysis_name], no_root=True)            # no root
+        for target_node in targets:      
+          write( ljust(window_name+target_node.get_name(), 80)+' '+analysis_name+': ')
+          value= eval('target_node.'+analysis_name+'(positions=positions)')   
+          if analysis_name.startswith('dCount'): write(str(value), 1)
+          else:                                  write(str(round(value, 4) ), 1)
 
-  ## analysis "with" one or more specific nodes
-  for analysis_name in [ 'CountS_with', 'CountA_with', 'Ks_with', 'Ka_with', 'KaKs_with' ]:
-    if opt[analysis_name]:
-      write('\n'+(' '+analysis_name+' (pycodeml) ').center(80, '_'), 1   )
-      list_of_refs_and_targets=     parse_args_analysis_with(  opt[analysis_name], A, analysis_name )  
-      for ref_for_this, target_nodes in list_of_refs_and_targets:
-        for target_node in target_nodes:
-          write( ljust(target_node.get_name(), 80)+' '+analysis_name+' '+  ref_for_this.get_name()+' : ')
-          value= eval('target_node.'+analysis_name+'(ref_for_this)')
-          if analysis_name.startswith('Count'): write(str(value), 1)
-          else:                                  write(str(round(value, 4) ), 1)        
+    ## analysis that can't be applied to leaves
+    for analysis_name in [ 'sum_dKs', 'sum_dKa', 'Ka', 'Ks', 'KaKs' ]:
+      if opt[analysis_name]:
+        write('\n'+(' '+analysis_name+' (pycodeml) ').center(80, '_'), 1   )
+        targets= A.get_nodes( opt[analysis_name], no_leaves=True)           #no leaves
+        analysis_name_call=analysis_name
+        if not analysis_name.startswith('sum_'): analysis_name_call+='_lineage' ## note: adding "_lineage" to analysis name; KaKs is called KaKs_lineage in ete2_MM
+        for target_node in targets:      
+          write( ljust(window_name+target_node.get_name(), 80)+' '+analysis_name+' ')
+          value= eval('target_node.'+analysis_name_call+'(positions=positions)')   
+          write(str(round(value, 4) ), 1)
+
+    ## analysis "with" one or more specific nodes
+    for analysis_name in [ 'CountS_with', 'CountA_with', 'Ks_with', 'Ka_with', 'KaKs_with' ]:
+      if opt[analysis_name]:
+        write('\n'+(' '+analysis_name+' (pycodeml) ').center(80, '_'), 1   )
+        list_of_refs_and_targets=     parse_args_analysis_with(  opt[analysis_name], A, analysis_name )  
+        for ref_for_this, target_nodes in list_of_refs_and_targets:
+          for target_node in target_nodes:
+            write( ljust(window_name+target_node.get_name(), 80)+' '+analysis_name+' '+  ref_for_this.get_name()+' : ')
+            value= eval('target_node.'+analysis_name+'(ref_for_this, positions=positions)')
+            if analysis_name.startswith('Count'): write(str(value), 1)
+            else:                                 write(str(round(value, 4) ), 1)        
 
 
   ####### scaling tree
